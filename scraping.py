@@ -1,3 +1,4 @@
+import math
 import os
 from datetime import datetime
 
@@ -8,10 +9,11 @@ import re
 import random
 import time
 import pandas as pd
+import requests
 
-url = "https://www.linkedin.com/jobs/search/?currentJobId=3480686192&f_E=1&f_JT=F&geoId=106057199&keywords=Marketing%20E%20Publicidade&location=Brasil"
+url = "https://www.linkedin.com/jobs/search?keywords=Servi%C3%A7os%20De%20Publicidade%20Ou%20Marketing%20E%20Publicidade&location=Brasil&locationId=&geoId=106057199&f_TPR=&f_JT=F%2CI&position=1&pageNum=0"
 
-#lista de user agents usada para corrigir possiveis bloqueios do linkedin, ocasionados por muitas requisições
+# Lista de user agents, usada para corrigir possiveis bloqueios do linkedin, ocasionados por muitas requisições
 USER_AGENTS = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3',
     'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3',
@@ -33,10 +35,18 @@ driver.get(url)
 
 # Espera até que todos os elementos sejam carregados (pode ser necessário ajustar o tempo de espera)
 driver.implicitly_wait(10)
-for i in range(1):
+
+# Obtendo o total de vagas
+response = requests.get(url)
+totalVagas = BeautifulSoup(response.content, 'html.parser')
+totalVagas = totalVagas.find('span', class_='results-context-header__job-count').get_text()
+totalVagas = int(totalVagas)
+
+# Simulando scrolls para percorrer por todas as vagas
+for i in range(math.ceil(totalVagas/10)):
     # Simula a rolagem da página até o final
     driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-    time.sleep(2)
+    time.sleep(1)
 
 
 # Extrai o HTML da página carregada
@@ -57,7 +67,7 @@ for conteudo in conteudos:
     driver.implicitly_wait(10)
     html2 = driver.page_source
     soup2 = BeautifulSoup(html2, "html.parser")
-    time.sleep(2)
+    #time.sleep(2)
 
     horarioScraping = datetime.now()
     horarioScraping = horarioScraping.strftime("%d-%m-%Y %H:%M:%S")
@@ -76,44 +86,52 @@ for conteudo in conteudos:
     dados['Nome da vaga'] = nomeVaga.string.strip() if nomeVaga is not None else "Not found"
     dados['Nome da empresa contratante'] = nomeEmpresa.string.strip() if nomeEmpresa is not None else "Not found"
     dados['URL da empresa contratante'] = urlEmpresa.get('href') if urlEmpresa is not None else "Not found"
-    dados['Tipo de contratação'] = tipoContratacao[1].string.strip() if len(tipoContratacao) >= 1 else "Not found"
+    dados['Tipo de contratação'] = tipoContratacao[1].string.strip() if len(tipoContratacao) >= 2 else "Not found"
+
     dados['Nível de experiência'] = nivelExp.string.strip() if nivelExp is not None else "Not found"
     dados['Número de candidaturas para vaga'] = numeroCandidaturas.string.strip() if numeroCandidaturas is not None else "Not found"
     dados['Data da postagem da vaga'] = dataPostagem.string.strip() if dataPostagem is not None else "Not found"
     dados['Horário do scraping'] = horarioScraping
     dados['Modelo de contratação'] = modeloContratacao.string.strip() if modeloContratacao is not None else "Not found"
+    dados['URL da candidatura'] = urlVaga
 
-    print(dados['Modelo de contratação'])
 
-    #acessando o link da empresa
+    # Verificando se a empresa tem perfil no linkedin e acessando
     driver = webdriver.Chrome(options=options)
-    driver.get(urlEmpresa.get('href'))
-    driver.implicitly_wait(10)
-    html3 = driver.page_source
-    soup3 = BeautifulSoup(html3, "html.parser")
-    time.sleep(2)
 
-    #extraido apenas o local da String
-    localSede = soup3.find('h3', class_='top-card-layout__first-subline')
-    localSede = localSede.get_text() if localSede is not None else "Not found"
-    local = re.sub(r'\d.*', '', localSede).strip()
 
-    dados['Local sede da empresa'] = local
+    if urlEmpresa is not None:
+        driver.get(urlEmpresa.get('href'))
+        driver.implicitly_wait(10)
+        html3 = driver.page_source
+        soup3 = BeautifulSoup(html3, "html.parser")
+        #time.sleep(2)
 
-    #extraindo apenas o numero dos funcionarios da string
-    numeroFuncionarios = soup3.find('a', class_='face-pile__cta')
-    numeroFuncionarios = numeroFuncionarios.get_text() if numeroFuncionarios is not None else "Not found"
-    numerosF = re.findall('\d+', numeroFuncionarios)[0] if numeroFuncionarios != "Not found" else "Not found"
+        # Extraido apenas o local da String
+        localSede = soup3.find('h3', class_='top-card-layout__first-subline')
+        localSede = localSede.get_text() if localSede is not None else "Not found"
+        local = re.sub(r'\d.*', '', localSede).strip()
 
-    dados['Número de funcionários da empresa'] = numerosF
+        dados['Local sede da empresa'] = local
 
-    #extraindo apenas os numeros de seguidores da string
-    numeroSeguidores = soup3.find('h3', class_='top-card-layout__first-subline')
-    numeroSeguidores = numeroSeguidores.get_text() if numeroSeguidores is not None else "Not found"
-    numerosS = re.findall('\d+', numeroSeguidores)[0] if numeroSeguidores != "Not found" else "Not found"
+        # Extraindo apenas o numero dos funcionarios da string
+        numeroFuncionarios = soup3.find('a', class_='face-pile__cta')
+        numeroFuncionarios = numeroFuncionarios.get_text() if numeroFuncionarios is not None else "Not found"
+        numerosF = re.findall('\d+', numeroFuncionarios)[0] if numeroFuncionarios != "Not found" else "Not found"
 
-    dados['Número de seguidores da empresa'] = numerosS
+        dados['Número de funcionários da empresa'] = numerosF
 
-    print(dados['Local sede da empresa'])
+        # Extraindo apenas os numeros de seguidores da string
+        numeroSeguidores = soup3.find('h3', class_='top-card-layout__first-subline')
+        numeroSeguidores = numeroSeguidores.get_text() if numeroSeguidores is not None else "Not found"
+        numerosS = re.findall('\d+', numeroSeguidores)[0] if numeroSeguidores != "Not found" else "Not found"
+
+        dados['Número de seguidores da empresa'] = numerosS
+    else:
+        dados['Local sede da empresa'] = 'Not Found'
+        dados['Número de funcionários da empresa'] = 'Not Found'
+        dados['Número de seguidores da empresa'] = 'Not Found'
+
+    # Gerando o arquivo.csv
     df = pd.DataFrame.from_dict(dados, orient='index').T
     df.to_csv('dados.csv', index=False, mode='a', header=not os.path.isfile('dados.csv'))
